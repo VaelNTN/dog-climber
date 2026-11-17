@@ -32,8 +32,16 @@ let stage: DogClimberStage | null = null;
 let homeAnimId: number | null = null;
 let syncTimeout: number | null = null;
 let hsPollInterval: number | null = null;
+let hsHeadingTapCount = 0;
+let hsHeadingTapTimer: number | null = null;
 
-function renderDogThumb(canvas: HTMLCanvasElement, breedId: number, size: number): void {
+function renderDogThumb(
+  canvas: HTMLCanvasElement,
+  breedId: number,
+  size: number,
+  collarColor = state.collarColor,
+  accessory = state.accessory
+): void {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = size * dpr;
   canvas.height = size * dpr;
@@ -42,8 +50,8 @@ function renderDogThumb(canvas: HTMLCanvasElement, breedId: number, size: number
   ctx.scale(dpr, dpr);
   drawCartoonDog(ctx, size / 2, size * 0.44, size * 0.24, {
     breed: getDogBreed(breedId),
-    collarColor: state.collarColor,
-    accessory: state.accessory,
+    collarColor,
+    accessory,
     pose: 'portrait',
   });
 }
@@ -55,76 +63,77 @@ function buildApp(): void {
       <div class="home-hero">
         <canvas id="home-dog-canvas" class="dog-preview-canvas"></canvas>
         <h1 class="game-title">Dog Climber</h1>
-        <p class="game-subtitle">
-          Tik omhoog, verzamel botjes & brandkranen en klim met jouw hond naar het wereldrecord!
-        </p>
+        <p class="game-subtitle">Tap fast to climb higher!</p>
         <div id="home-best-pill" class="best-pill hidden"></div>
       </div>
       <div class="home-actions">
         <button id="btn-home-play" class="btn btn-primary">Play</button>
-        <button id="btn-home-options" class="btn btn-secondary">Hondopties</button>
-        <button id="btn-home-highscores" class="btn btn-secondary">Highscores</button>
+        <button id="btn-home-options" class="btn btn-secondary">Dog Style</button>
+        <button id="btn-home-highscores" class="btn btn-secondary">Leaderboard</button>
       </div>
     </section>
 
     <section id="screen-options" class="screen hidden">
       <div class="top-nav">
-        <button id="btn-options-back" class="btn btn-small">← Terug</button>
-        <h2 class="screen-heading">Kies je Hond</h2>
+        <button id="btn-options-back" class="btn btn-small">← Back</button>
+        <h2 class="screen-heading">Dog Style</h2>
         <span style="width:60px"></span>
       </div>
       <div class="options-scroll">
         <div>
-          <p class="section-label">Jouw Naam (voor Highscores)</p>
-          <input id="player-name-input" class="name-input" type="text" maxlength="20" placeholder="Hondenbaas" />
+          <p class="section-label">Player Name</p>
+          <input id="player-name-input" class="name-input" type="text" maxlength="20" placeholder="Player" />
         </div>
         <div>
-          <p class="section-label">Hondenras</p>
+          <p class="section-label">Dog Breed</p>
           <div id="dog-breed-grid" class="breed-grid"></div>
         </div>
         <div>
-          <p class="section-label">Halsbandkleur</p>
+          <p class="section-label">Collar Color</p>
           <div id="collar-chips" class="chip-row"></div>
         </div>
         <div>
-          <p class="section-label">Accessoire</p>
+          <p class="section-label">Accessory</p>
           <div id="acc-chips" class="chip-row"></div>
         </div>
-        <button id="btn-options-start" class="btn btn-primary">Start Klimmen</button>
+        <button id="btn-options-start" class="btn btn-primary">Play Now</button>
       </div>
     </section>
 
     <section id="screen-game" class="screen game-screen hidden">
       <div class="game-top-bar">
         <button id="btn-game-menu" class="btn btn-small">← Menu</button>
-        <div style="display:flex;gap:8px;">
-          <button id="btn-game-new" class="btn btn-small">Nieuw</button>
-          <button id="btn-game-options" class="btn btn-small">Hond</button>
-          <button id="btn-game-sound" class="btn btn-small">Geluid: Aan</button>
+        <div class="game-top-actions">
+          <button id="btn-game-new" class="btn btn-small">New</button>
+          <button id="btn-game-options" class="btn btn-small">Dog</button>
+          <button id="btn-game-sound" class="btn btn-small" aria-label="Toggle sound">🔊</button>
         </div>
       </div>
       <div class="meters-hud">
         <div id="meters-value" class="meters-value">0.0 m</div>
-        <div id="meters-best" class="meters-sub">Record: 0.0 m</div>
+        <div id="meters-best" class="meters-sub">Best: 0.0 m</div>
       </div>
       <canvas id="game-canvas" class="game-canvas"></canvas>
     </section>
 
     <section id="screen-highscores" class="screen hidden">
       <div class="top-nav">
-        <button id="btn-hs-back" class="btn btn-small">← Terug</button>
-        <h2 class="screen-heading">Highscores</h2>
-        <button id="btn-hs-refresh" class="btn btn-small">Ververs</button>
+        <button id="btn-hs-back" class="btn btn-small">← Back</button>
+        <h2 id="hs-heading" class="screen-heading">Leaderboard</h2>
+        <button id="btn-hs-refresh" class="btn btn-small">Refresh</button>
       </div>
       <div class="hs-tabs">
-        <button id="tab-hs-global" class="hs-tab active">Online Wereldwijd</button>
-        <button id="tab-hs-local" class="hs-tab">Lokaal (Top 50)</button>
+        <button id="tab-hs-global" class="hs-tab active">🌐 Global</button>
+        <button id="tab-hs-local" class="hs-tab">📱 Local</button>
+      </div>
+      <div class="hs-status-bar">
+        <span id="hs-status-text">Connecting...</span>
       </div>
       <div id="server-box" class="server-box hidden">
-        <p class="section-label" style="margin:0;">Highscore Server URL</p>
+        <p class="section-label" style="margin:0;">Developer Endpoint URL</p>
         <div style="display:flex;gap:8px;">
-          <input id="server-url-input" class="name-input" type="url" placeholder="https://arcade-highscores-worker...workers.dev" />
-          <button id="btn-save-server" class="btn btn-small">Opslaan</button>
+          <input id="server-url-input" class="name-input" type="url" placeholder="https://example.com" />
+          <button id="btn-save-server" class="btn btn-small">Save</button>
         </div>
       </div>
       <div id="hs-list" class="hs-list"></div>
@@ -146,6 +155,7 @@ function showScreen(name: ScreenName): void {
   else stopHomePreview();
 
   if (name === 'highscores') {
+    document.getElementById('server-box')?.classList.add('hidden');
     refreshHighscoresView();
     hsPollInterval = window.setInterval(() => refreshHighscoresView(), 12000);
   } else if (hsPollInterval !== null) {
@@ -159,7 +169,7 @@ function startHomePreview(): void {
   const canvas = document.getElementById('home-dog-canvas') as HTMLCanvasElement;
   const pill = document.getElementById('home-best-pill')!;
   if (state.bestMeters > 0) {
-    pill.textContent = `Beste klim: ${state.bestMeters.toFixed(1)} m`;
+    pill.textContent = `Best Climb: ${state.bestMeters.toFixed(1)} m`;
     pill.classList.remove('hidden');
   } else {
     pill.classList.add('hidden');
@@ -203,8 +213,16 @@ function renderOptions(): void {
   for (const b of DOG_BREEDS) {
     const btn = document.createElement('button');
     btn.className = `breed-card ${state.breedId === b.id ? 'selected' : ''}`;
-    btn.innerHTML = `<canvas width="48" height="48"></canvas><span style="font-weight:700;font-size:0.9rem;">${b.name}</span>`;
-    renderDogThumb(btn.querySelector('canvas')!, b.id, 48);
+    const cvs = document.createElement('canvas');
+    cvs.width = 48;
+    cvs.height = 48;
+    renderDogThumb(cvs, b.id, 48);
+    const label = document.createElement('span');
+    label.style.fontWeight = '700';
+    label.style.fontSize = '0.9rem';
+    label.textContent = b.name;
+    btn.appendChild(cvs);
+    btn.appendChild(label);
     btn.onclick = () => {
       state.breedId = b.id;
       saveDogClimberState(state);
@@ -244,8 +262,8 @@ function renderOptions(): void {
 
 function updateGameHud(): void {
   document.getElementById('meters-value')!.textContent = `${state.currentMeters.toFixed(1)} m`;
-  document.getElementById('meters-best')!.textContent = `Record: ${state.bestMeters.toFixed(1)} m`;
-  document.getElementById('btn-game-sound')!.textContent = `Geluid: ${state.soundEnabled ? 'Aan' : 'Uit'}`;
+  document.getElementById('meters-best')!.textContent = `Best: ${state.bestMeters.toFixed(1)} m`;
+  document.getElementById('btn-game-sound')!.textContent = state.soundEnabled ? '🔊' : '🔇';
 }
 
 function scheduleSync(): void {
@@ -254,7 +272,7 @@ function scheduleSync(): void {
     if (state.apiBaseUrl) {
       submitGlobalDogClimberScore(state.apiBaseUrl, {
         deviceId: state.deviceId,
-        playerName: state.playerName,
+        playerName: state.playerName.trim() || 'Player',
         meters: state.bestMeters,
         breedId: state.breedId,
         collarColor: state.collarColor,
@@ -304,9 +322,77 @@ function stopStage(): void {
   stage?.stop();
 }
 
+function appendDogHighscoreRow(
+  list: HTMLElement,
+  opts: {
+    rankText: string;
+    playerName: string;
+    breedId: number;
+    collarColor: DogClimberState['collarColor'];
+    accessory: DogClimberState['accessory'];
+    meters: number;
+    isMe?: boolean;
+  }
+): void {
+  const row = document.createElement('div');
+  row.className = `hs-row${opts.isMe ? ' me' : ''}`;
+
+  const left = document.createElement('div');
+  left.className = 'hs-left';
+
+  const rank = document.createElement('span');
+  rank.className = 'hs-rank';
+  rank.textContent = opts.rankText;
+
+  const icon = document.createElement('canvas');
+  icon.className = 'hs-icon';
+  renderDogThumb(icon, opts.breedId, 38, opts.collarColor, opts.accessory);
+
+  const info = document.createElement('div');
+  info.style.minWidth = '0';
+  const name = document.createElement('div');
+  name.className = 'hs-name';
+  name.textContent = opts.isMe ? `${opts.playerName} (You)` : opts.playerName;
+  const meta = document.createElement('div');
+  meta.className = 'hs-meta';
+  meta.textContent = getDogBreed(opts.breedId).name;
+  info.appendChild(name);
+  info.appendChild(meta);
+
+  left.appendChild(rank);
+  left.appendChild(icon);
+  left.appendChild(info);
+
+  const score = document.createElement('div');
+  score.className = 'hs-score';
+  score.textContent = `${opts.meters.toFixed(1)} m`;
+
+  row.appendChild(left);
+  row.appendChild(score);
+  list.appendChild(row);
+}
+
+function renderLocalHighscoresList(list: HTMLElement): void {
+  if (state.highscores.length === 0) {
+    list.innerHTML = `<p style="text-align:center;color:var(--muted);margin-top:30px;">No climbs yet! Tap Play to start climbing.</p>`;
+    return;
+  }
+  list.innerHTML = '';
+  state.highscores.forEach((h, i) => {
+    appendDogHighscoreRow(list, {
+      rankText: `#${i + 1}`,
+      playerName: h.playerName,
+      breedId: h.breedId,
+      collarColor: h.collarColor,
+      accessory: h.accessory,
+      meters: h.meters,
+    });
+  });
+}
+
 async function refreshHighscoresView(): Promise<void> {
   const list = document.getElementById('hs-list')!;
-  const serverBox = document.getElementById('server-box')!;
+  const statusEl = document.getElementById('hs-status-text')!;
   const serverInput = document.getElementById('server-url-input') as HTMLInputElement;
   serverInput.value = state.apiBaseUrl;
 
@@ -314,59 +400,41 @@ async function refreshHighscoresView(): Promise<void> {
   document.getElementById('tab-hs-local')?.classList.toggle('active', hsMode === 'local');
 
   if (hsMode === 'local') {
-    serverBox.classList.add('hidden');
-    if (state.highscores.length === 0) {
-      list.innerHTML = `<p style="text-align:center;color:var(--muted);margin-top:30px;">Nog geen klimrecords. Tik op Play om te beginnen!</p>`;
-      return;
-    }
-    list.innerHTML = state.highscores
-      .map(
-        (h, i) => `
-        <div class="hs-row">
-          <div class="hs-left">
-            <span class="hs-rank">#${i + 1}</span>
-            <div>
-              <div class="hs-name">${h.playerName}</div>
-              <div class="hs-meta">${getDogBreed(h.breedId).name}</div>
-            </div>
-          </div>
-          <div class="hs-score">${h.meters.toFixed(1)} m</div>
-        </div>`
-      )
-      .join('');
+    statusEl.textContent = `Local History (${state.highscores.length} climbs)`;
+    renderLocalHighscoresList(list);
     return;
   }
 
-  serverBox.classList.toggle('hidden', Boolean(state.apiBaseUrl));
   if (!state.apiBaseUrl) {
-    list.innerHTML = `<p style="text-align:center;color:var(--muted);margin-top:24px;">Vul hierboven je Worker-URL in voor online wereldranglijsten (lokaal bewaren blijft altijd werken).</p>`;
+    statusEl.textContent = 'Offline Mode — Local Records';
+    renderLocalHighscoresList(list);
     return;
   }
 
+  statusEl.textContent = 'Connecting...';
   try {
     const res = await fetchGlobalDogClimberHighscores(state.apiBaseUrl, state.deviceId, 50);
     const entries: GlobalDogClimberEntry[] = res.entries || [];
+    statusEl.textContent = `Live • ${entries.length} players worldwide`;
     if (entries.length === 0) {
-      list.innerHTML = `<p style="text-align:center;color:var(--muted);margin-top:30px;">Nog geen online scores. Jij kunt #1 worden!</p>`;
+      list.innerHTML = `<p style="text-align:center;color:var(--muted);margin-top:30px;">No global climbs yet! You can be #1.</p>`;
       return;
     }
-    list.innerHTML = entries
-      .map(
-        (e) => `
-        <div class="hs-row ${e.deviceId === state.deviceId ? 'me' : ''}">
-          <div class="hs-left">
-            <span class="hs-rank">#${e.rank}</span>
-            <div>
-              <div class="hs-name">${e.playerName}</div>
-              <div class="hs-meta">${getDogBreed(e.breedId).name}</div>
-            </div>
-          </div>
-          <div class="hs-score">${e.meters.toFixed(1)} m</div>
-        </div>`
-      )
-      .join('');
+    list.innerHTML = '';
+    entries.forEach((e) => {
+      appendDogHighscoreRow(list, {
+        rankText: `#${e.rank}`,
+        playerName: e.playerName,
+        breedId: e.breedId,
+        collarColor: e.collarColor,
+        accessory: e.accessory,
+        meters: e.meters,
+        isMe: e.deviceId === state.deviceId,
+      });
+    });
   } catch {
-    list.innerHTML = `<p style="text-align:center;color:#fca5a5;margin-top:24px;">Offline of server niet bereikbaar. Bekijk tab Lokaal!</p>`;
+    statusEl.textContent = 'Offline Mode — Local Records';
+    renderLocalHighscoresList(list);
   }
 }
 
@@ -388,7 +456,7 @@ async function init(): Promise<void> {
   document.getElementById('btn-options-back')!.onclick = () => showScreen(optionsFromPlay ? 'game' : 'home');
   document.getElementById('btn-options-start')!.onclick = () => showScreen('game');
   document.getElementById('player-name-input')!.addEventListener('input', (e) => {
-    state.playerName = (e.target as HTMLInputElement).value.slice(0, 20) || 'Hondenbaas';
+    state.playerName = (e.target as HTMLInputElement).value.slice(0, 20);
     saveDogClimberState(state);
   });
 
@@ -420,10 +488,25 @@ async function init(): Promise<void> {
     hsMode = 'local';
     refreshHighscoresView();
   };
+  document.getElementById('hs-heading')!.onclick = () => {
+    hsHeadingTapCount += 1;
+    if (hsHeadingTapTimer !== null) {
+      window.clearTimeout(hsHeadingTapTimer);
+    }
+    if (hsHeadingTapCount >= 5) {
+      hsHeadingTapCount = 0;
+      document.getElementById('server-box')!.classList.toggle('hidden');
+    } else {
+      hsHeadingTapTimer = window.setTimeout(() => {
+        hsHeadingTapCount = 0;
+      }, 1500);
+    }
+  };
   document.getElementById('btn-save-server')!.onclick = () => {
     const val = (document.getElementById('server-url-input') as HTMLInputElement).value.trim().replace(/\/+$/, '');
     state.apiBaseUrl = val;
     saveDogClimberState(state);
+    document.getElementById('server-box')!.classList.add('hidden');
     refreshHighscoresView();
   };
 

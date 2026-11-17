@@ -68,7 +68,7 @@ export function loadDogClimberState(deviceId: string): DogClimberState {
     breedId: 0,
     collarColor: 'red',
     accessory: 'none',
-    playerName: 'Hondenbaas',
+    playerName: 'Player',
     soundEnabled: true,
     currentMeters: 0,
     bestMeters: 0,
@@ -82,6 +82,8 @@ export function loadDogClimberState(deviceId: string): DogClimberState {
     const parsed = JSON.parse(raw) as Partial<DogClimberState>;
     const currentMeters = Math.max(0, Number(parsed.currentMeters || 0));
     const bestMeters = Math.max(currentMeters, Number(parsed.bestMeters || 0));
+    const rawName = typeof parsed.playerName === 'string' ? parsed.playerName.trim() : '';
+    const resolvedName = rawName && rawName !== 'Hondenbaas' ? rawName : 'Player';
     return {
       deviceId,
       apiBaseUrl:
@@ -91,10 +93,7 @@ export function loadDogClimberState(deviceId: string): DogClimberState {
       breedId: typeof parsed.breedId === 'number' ? parsed.breedId : 0,
       collarColor: parsed.collarColor || 'red',
       accessory: parsed.accessory || 'none',
-      playerName:
-        typeof parsed.playerName === 'string' && parsed.playerName.trim()
-          ? parsed.playerName.trim()
-          : 'Hondenbaas',
+      playerName: resolvedName,
       soundEnabled: parsed.soundEnabled !== false,
       currentMeters,
       bestMeters,
@@ -122,7 +121,7 @@ export function updateDogClimberHighscore(state: DogClimberState): void {
   const idx = state.highscores.findIndex((h) => h.id === state.activeRunId);
   const entry: DogClimberHighscore = {
     id: state.activeRunId,
-    playerName: state.playerName.trim() || 'Hondenbaas',
+    playerName: state.playerName.trim() || 'Player',
     meters: rounded,
     breedId: state.breedId,
     collarColor: state.collarColor,

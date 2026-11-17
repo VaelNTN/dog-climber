@@ -149,7 +149,7 @@ export class DogClimberStage {
       delta += 3.5;
       this.targetMeters += 3.5;
       bonusType = 'hydrant';
-      this.spawnPopup(this.width / 2, this.height * 0.45, 'BRANDKRAAN +3.5m!', '#38bdf8');
+      this.spawnPopup(this.width / 2, this.height * 0.45, 'HYDRANT +3.5m!', '#38bdf8');
       for (let i = 0; i < 14; i++) {
         this.particles.push({
           x: this.width / 2 + (Math.random() - 0.5) * 40,
@@ -167,7 +167,7 @@ export class DogClimberStage {
       delta += 1.2;
       this.targetMeters += 1.2;
       bonusType = 'bone';
-      this.spawnPopup(this.width / 2, this.height * 0.48, 'BOTJE +1.2m!', '#facc15');
+      this.spawnPopup(this.width / 2, this.height * 0.48, 'BONE +1.2m!', '#facc15');
     } else {
       this.spawnPopup(this.width / 2 + (Math.random() - 0.5) * 48, this.height * 0.52, `+${delta.toFixed(1)}m`, '#fde68a');
     }
@@ -278,20 +278,20 @@ export class DogClimberStage {
       ctx.stroke();
     }
 
-    // Next bone preview
+    // Next bone collectible (real dog bone with two knobs on each end)
     const boneDistPx = (this.nextBoneMeter - this.visualMeters) * this.pxPerMeter;
     const boneY = height * 0.62 - boneDistPx;
-    if (boneY > -40 && boneY < height) {
-      ctx.save();
-      ctx.translate(cx + 46, boneY);
-      ctx.fillStyle = '#fde68a';
-      ctx.strokeStyle = '#92400e';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(-12, -4, 24, 8, 3);
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
+    if (boneY > -40 && boneY < height + 40) {
+      const bob = Math.sin(this.clock * 4) * 2.5;
+      this.drawBoneCollectible(ctx, cx + 48, boneY + bob);
+    }
+
+    // Next fire hydrant collectible (visible red hydrant on left side of ladder)
+    const hydrantDistPx = (this.nextHydrantMeter - this.visualMeters) * this.pxPerMeter;
+    const hydrantY = height * 0.62 - hydrantDistPx;
+    if (hydrantY > -50 && hydrantY < height + 50) {
+      const bob = Math.sin(this.clock * 3.5) * 2;
+      this.drawFireHydrant(ctx, cx - 50, hydrantY + bob);
     }
 
     // Best line
@@ -309,7 +309,7 @@ export class DogClimberStage {
         ctx.setLineDash([]);
         ctx.fillStyle = '#facc15';
         ctx.font = 'bold 12px sans-serif';
-        ctx.fillText(`RECORD ${this.bestMeters.toFixed(1)}m`, 20, bestY - 6);
+        ctx.fillText(`BEST ${this.bestMeters.toFixed(1)}m`, 20, bestY - 6);
       }
     }
 
@@ -342,6 +342,98 @@ export class DogClimberStage {
       ctx.fillText(pop.text, pop.x, pop.y);
     }
     ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  private drawBoneCollectible(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+    ctx.save();
+    ctx.translate(x, y);
+
+    ctx.fillStyle = 'rgba(250, 204, 21, 0.22)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 19, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#fef3c7';
+    ctx.strokeStyle = '#92400e';
+    ctx.lineWidth = 2;
+
+    const knobs: [number, number][] = [
+      [-11, -4],
+      [-11, 4],
+      [11, -4],
+      [11, 4],
+    ];
+    for (const [kx, ky] of knobs) {
+      ctx.beginPath();
+      ctx.arc(kx, ky, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    ctx.fillRect(-10, -3.5, 20, 7);
+    ctx.beginPath();
+    ctx.moveTo(-8, -3.5);
+    ctx.lineTo(8, -3.5);
+    ctx.moveTo(-8, 3.5);
+    ctx.lineTo(8, 3.5);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private drawFireHydrant(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Subtle sky-blue/red glow
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.24)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Small bracket/ledge attaching hydrant toward ladder
+    ctx.fillStyle = '#92400e';
+    ctx.fillRect(-16, 12, 39, 5);
+
+    ctx.strokeStyle = '#7f1d1d';
+    ctx.lineWidth = 2;
+
+    // Base flange
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.roundRect(-11, 8, 22, 5, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Main cylinder body
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.roundRect(-8, -8, 16, 17, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Side nozzles
+    ctx.fillStyle = '#fca5a5';
+    ctx.fillRect(-13, -3, 5, 6);
+    ctx.strokeRect(-13, -3, 5, 6);
+    ctx.fillRect(8, -3, 5, 6);
+    ctx.strokeRect(8, -3, 5, 6);
+
+    // Domed cap + top nut
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.arc(0, -8, 8, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.beginPath();
+    ctx.roundRect(-3, -19, 6, 4, 1);
+    ctx.fill();
+    ctx.stroke();
+
     ctx.restore();
   }
 }
