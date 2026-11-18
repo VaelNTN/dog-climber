@@ -154,13 +154,14 @@ function showScreen(name: ScreenName): void {
   if (name === 'home') startHomePreview();
   else stopHomePreview();
 
+  if (hsPollInterval !== null) {
+    clearInterval(hsPollInterval);
+    hsPollInterval = null;
+  }
   if (name === 'highscores') {
     document.getElementById('server-box')?.classList.add('hidden');
     refreshHighscoresView();
     hsPollInterval = window.setInterval(() => refreshHighscoresView(), 12000);
-  } else if (hsPollInterval !== null) {
-    clearInterval(hsPollInterval);
-    hsPollInterval = null;
   }
 }
 
@@ -175,15 +176,20 @@ function startHomePreview(): void {
     pill.classList.add('hidden');
   }
 
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = 150 * dpr;
+  canvas.height = 150 * dpr;
+
   let phase = 0;
-  const draw = () => {
-    phase += 0.03;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = 150 * dpr;
-    canvas.height = 150 * dpr;
+  let lastTime = performance.now();
+  const draw = (now: number) => {
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
+    lastTime = now;
+    phase += dt * 1.8;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      ctx.scale(dpr, dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, 150, 150);
       drawCartoonDog(ctx, 75, 68 + Math.sin(phase * 2) * 4, 34, {
         breed: getDogBreed(state.breedId),
         collarColor: state.collarColor,
@@ -194,7 +200,7 @@ function startHomePreview(): void {
     }
     homeAnimId = requestAnimationFrame(draw);
   };
-  draw();
+  homeAnimId = requestAnimationFrame(draw);
 }
 
 function stopHomePreview(): void {

@@ -17,12 +17,21 @@ export function drawCartoonDog(
     pose: 'portrait' | 'climb' | 'hang';
     animPhase?: number;
     stepDir?: number;
+    boostLevel?: number;
   }
 ): void {
-  const { breed, collarColor, accessory, pose, animPhase = 0, stepDir = 1 } = opts;
+  const {
+    breed,
+    collarColor,
+    accessory,
+    pose,
+    animPhase = 0,
+    stepDir = 1,
+    boostLevel = 0,
+  } = opts;
   const collarHex = getCollarHex(collarColor);
   const s = size;
-  const wag = Math.sin(animPhase * 12) * 0.35;
+  const wag = Math.sin(animPhase * (12 + boostLevel * 8)) * (0.35 + boostLevel * 0.25);
 
   ctx.save();
   ctx.translate(x, y);
@@ -31,12 +40,15 @@ export function drawCartoonDog(
   ctx.save();
   ctx.translate(-s * 0.45, s * 0.45);
   ctx.rotate(-0.6 + wag);
-  ctx.strokeStyle = breed.fur;
-  ctx.lineWidth = s * 0.24;
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = s * 0.29;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.quadraticCurveTo(-s * 0.4, -s * 0.35, -s * 0.25, -s * 0.72);
+  ctx.stroke();
+  ctx.strokeStyle = breed.fur;
+  ctx.lineWidth = s * 0.21;
   ctx.stroke();
   ctx.restore();
 
@@ -70,8 +82,8 @@ export function drawCartoonDog(
   }
 
   // Arms / Paws
-  const leftArmY = pose === 'hang' ? -s * 0.92 : pose === 'climb' ? s * (0.05 - stepDir * 0.22) : s * 0.35;
-  const rightArmY = pose === 'hang' ? -s * 0.92 : pose === 'climb' ? s * (0.05 + stepDir * 0.22) : s * 0.35;
+  const leftArmY = pose === 'hang' ? -s * 0.92 : pose === 'climb' ? s * (0.04 - stepDir * 0.28) : s * 0.35;
+  const rightArmY = pose === 'hang' ? -s * 0.92 : pose === 'climb' ? s * (0.04 + stepDir * 0.28) : s * 0.35;
   for (const [px, py] of [
     [-s * 0.58, leftArmY],
     [s * 0.58, rightArmY],
@@ -85,8 +97,8 @@ export function drawCartoonDog(
   }
 
   // Feet
-  const leftLegY = pose === 'climb' ? s * (1.02 + stepDir * 0.14) : s * 1.04;
-  const rightLegY = pose === 'climb' ? s * (1.02 - stepDir * 0.14) : s * 1.04;
+  const leftLegY = pose === 'climb' ? s * (1.02 + stepDir * 0.18) : s * 1.04;
+  const rightLegY = pose === 'climb' ? s * (1.02 - stepDir * 0.18) : s * 1.04;
   for (const [lx, ly] of [
     [-s * 0.28, leftLegY],
     [s * 0.28, rightLegY],
@@ -100,7 +112,7 @@ export function drawCartoonDog(
   }
 
   // Collar + tag
-  ctx.fillStyle = accessory === 'bandana' ? collarHex : collarHex;
+  ctx.fillStyle = collarHex;
   if (accessory === 'bandana') {
     ctx.beginPath();
     ctx.moveTo(-s * 0.42, s * 0.06);
@@ -123,6 +135,12 @@ export function drawCartoonDog(
     ctx.stroke();
   }
 
+  // Subtle head tilt with climb step
+  ctx.save();
+  if (pose === 'climb') {
+    ctx.rotate(stepDir * 0.06);
+  }
+
   // Ears behind/on head
   if (breed.earStyle === 'pointy') {
     for (const side of [-1, 1]) {
@@ -140,7 +158,7 @@ export function drawCartoonDog(
     for (const side of [-1, 1]) {
       ctx.save();
       ctx.translate(side * s * 0.56, -s * 0.36);
-      ctx.rotate(side * 0.28);
+      ctx.rotate(side * 0.28 + (pose === 'climb' ? stepDir * 0.1 : 0));
       ctx.fillStyle = breed.ear;
       ctx.beginPath();
       ctx.ellipse(0, s * 0.18, s * 0.2, s * 0.36, 0, 0, Math.PI * 2);
@@ -159,6 +177,12 @@ export function drawCartoonDog(
   ctx.strokeStyle = '#0f172a';
   ctx.stroke();
 
+  // Head highlight
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.15, -s * 0.64, s * 0.2, s * 0.1, -0.35, 0, Math.PI * 2);
+  ctx.fill();
+
   // Dalmatian head spot
   if (breed.spotted) {
     ctx.fillStyle = '#1e293b';
@@ -176,7 +200,7 @@ export function drawCartoonDog(
   // Tongue
   ctx.fillStyle = '#fb7185';
   ctx.beginPath();
-  ctx.ellipse(s * 0.06, -s * 0.05, s * 0.08, s * 0.11, 0, 0, Math.PI * 2);
+  ctx.ellipse(s * 0.06, -s * 0.05, s * 0.08, s * (0.11 + boostLevel * 0.04), 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Nose
@@ -257,5 +281,6 @@ export function drawCartoonDog(
     ctx.restore();
   }
 
+  ctx.restore();
   ctx.restore();
 }
