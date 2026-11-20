@@ -26,6 +26,7 @@ type ScreenName = 'home' | 'options' | 'game' | 'highscores';
 type HsMode = 'global' | 'local';
 
 let state: DogClimberState;
+let activeScreen: ScreenName = 'home';
 let hsMode: HsMode = 'global';
 let optionsFromPlay = false;
 let stage: DogClimberStage | null = null;
@@ -34,6 +35,7 @@ let syncTimeout: number | null = null;
 let hsPollInterval: number | null = null;
 let hsHeadingTapCount = 0;
 let hsHeadingTapTimer: number | null = null;
+let confirmQuitArmed = false;
 
 function renderDogThumb(
   canvas: HTMLCanvasElement,
@@ -47,7 +49,8 @@ function renderDogThumb(
   canvas.height = size * dpr;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  ctx.scale(dpr, dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, size, size);
   drawCartoonDog(ctx, size / 2, size * 0.44, size * 0.24, {
     breed: getDogBreed(breedId),
     collarColor,
@@ -56,20 +59,83 @@ function renderDogThumb(
   });
 }
 
+function syncSoundButtons(): void {
+  const homeBtn = document.getElementById('btn-home-sound');
+  if (homeBtn) homeBtn.textContent = state.soundEnabled ? '🔊' : '🔇';
+  const gameBtn = document.getElementById('btn-game-sound');
+  if (gameBtn) gameBtn.textContent = state.soundEnabled ? '🔊' : '🔇';
+}
+
+function toggleSound(): void {
+  state.soundEnabled = !state.soundEnabled;
+  soundFX.enabled = state.soundEnabled;
+  saveDogClimberState(state);
+  syncSoundButtons();
+}
+
+function flushScoreNow(): void {
+  if (syncTimeout !== null) {
+    clearTimeout(syncTimeout);
+    syncTimeout = null;
+  }
+  if (state.apiBaseUrl && state.bestMeters > 0) {
+    void submitGlobalDogClimberScore(state.apiBaseUrl, {
+      deviceId: state.deviceId,
+      playerName: state.playerName.trim() || 'Player',
+      meters: state.bestMeters,
+      breedId: state.breedId,
+      collarColor: state.collarColor,
+      accessory: state.accessory,
+    });
+  }
+}
+
+function openPauseModal(): void {
+  if (!stage) return;
+  stage.setPaused(true);
+  flushScoreNow();
+  confirmQuitArmed = false;
+  const quitBtn = document.getElementById('btn-pause-quit')!;
+  quitBtn.textContent = '🚪 Quit to Menu';
+  quitBtn.classList.remove('armed');
+  document.getElementById('pause-modal')?.classList.remove('hidden');
+}
+
+function closePauseModal(resume = true): void {
+  document.getElementById('pause-modal')?.classList.add('hidden');
+  confirmQuitArmed = false;
+  const quitBtn = document.getElementById('btn-pause-quit');
+  if (quitBtn) {
+    quitBtn.textContent = '🚪 Quit to Menu';
+    quitBtn.classList.remove('armed');
+  }
+  if (resume && stage) {
+    stage.setPaused(false);
+  }
+}
+
 function buildApp(): void {
   const app = document.getElementById('app')!;
   app.innerHTML = `
     <section id="screen-home" class="screen home-screen">
-      <div class="home-hero">
-        <canvas id="home-dog-canvas" class="dog-preview-canvas"></canvas>
-        <h1 class="game-title">Dog Climber</h1>
-        <p class="game-subtitle">Tap fast to climb higher!</p>
-        <div id="home-best-pill" class="best-pill hidden"></div>
+      <div class="home-topbar">
+        <button id="btn-home-more" class="btn btn-small">✨ More Games</button>
+        <button id="btn-home-sound" class="btn btn-small" aria-label="Toggle sound">🔊</button>
       </div>
-      <div class="home-actions">
-        <button id="btn-home-play" class="btn btn-primary">Play</button>
-        <button id="btn-home-options" class="btn btn-secondary">Dog Style</button>
-        <button id="btn-home-highscores" class="btn btn-secondary">Leaderboard</button>
+      <div class="home-content">
+        <div class="home-hero">
+          <canvas id="home-dog-canvas" class="dog-preview-canvas"></canvas>
+          <h1 class="game-title">Dog Climber</h1>
+          <p class="game-subtitle">Tap left & right to climb, grab Golden Bones & dodge pinecones!</p>
+          <div id="home-best-pill" class="best-pill hidden"></div>
+        </div>
+        <div class="home-actions">
+          <button id="btn-home-play" class="btn btn-primary">▶ Play</button>
+          <div class="home-secondary-row">
+            <button id="btn-home-options" class="btn btn-secondary">🐶 Breeds</button>
+            <button id="btn-home-highscores" class="btn btn-secondary">🏆 Ranks</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -85,7 +151,7 @@ function buildApp(): void {
           <input id="player-name-input" class="name-input" type="text" maxlength="20" placeholder="Player" />
         </div>
         <div>
-          <p class="section-label">Dog Breed</p>
+          <p class="section-label">Dog Breed (10 Breeds)</p>
           <div id="dog-breed-grid" class="breed-grid"></div>
         </div>
         <div>
@@ -101,19 +167,21 @@ function buildApp(): void {
     </section>
 
     <section id="screen-game" class="screen game-screen hidden">
-      <div class="game-top-bar">
-        <button id="btn-game-menu" class="btn btn-small">← Menu</button>
-        <div class="game-top-actions">
-          <button id="btn-game-new" class="btn btn-small">New</button>
-          <button id="btn-game-options" class="btn btn-small">Dog</button>
+      <div class="game-hud-bar">
+        <button id="btn-game-pause" class="btn btn-small" aria-label="Pause">⏸ Pause</button>
+        <div class="hud-center">
+          <div class="meters-pill">
+            <span id="meters-value" class="meters-value">0.0 m</span>
+          </div>
+          <div id="meters-best" class="meters-sub">Best: 0.0 m</div>
+        </div>
+        <div class="hud-right-group">
           <button id="btn-game-sound" class="btn btn-small" aria-label="Toggle sound">🔊</button>
         </div>
       </div>
-      <div class="meters-hud">
-        <div id="meters-value" class="meters-value">0.0 m</div>
-        <div id="meters-best" class="meters-sub">Best: 0.0 m</div>
+      <div class="game-canvas-wrap">
+        <canvas id="game-canvas" class="game-canvas"></canvas>
       </div>
-      <canvas id="game-canvas" class="game-canvas"></canvas>
     </section>
 
     <section id="screen-highscores" class="screen hidden">
@@ -138,16 +206,66 @@ function buildApp(): void {
       </div>
       <div id="hs-list" class="hs-list"></div>
     </section>
+
+    <div id="pause-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <h3 class="modal-title">⏸ Paused</h3>
+        <p class="modal-sub">Rest your paws — your climb height is saved!</p>
+        <button id="btn-pause-resume" class="btn btn-primary" style="padding:13px;">▶ Resume</button>
+        <button id="btn-pause-options" class="btn btn-secondary">🐶 Dog Style</button>
+        <button id="btn-pause-new" class="btn btn-secondary">↻ New Climb</button>
+        <button id="btn-pause-quit" class="btn btn-danger">🚪 Quit to Menu</button>
+      </div>
+    </div>
+
+    <div id="more-games-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <h3 class="modal-title">✨ More Games by VaelNTN</h3>
+        <p class="modal-sub">Handcrafted arcade games from VaelNTN Studios.</p>
+        <div class="more-games-list">
+          <a class="more-game-item featured" href="https://github.com/VaelNTN/starforge-survivors/releases/latest" target="_blank" rel="noopener noreferrer">
+            <div>
+              <div class="more-game-name">⭐ Starforge Survivors</div>
+              <div class="more-game-desc">Flagship sci-fi roguelite — 6 heroes, 6 bosses & zero ads</div>
+            </div>
+            <span class="more-game-badge">FLAGSHIP</span>
+          </a>
+          <a class="more-game-item" href="https://github.com/VaelNTN/dog-hanger/releases/latest" target="_blank" rel="noopener noreferrer">
+            <div>
+              <div class="more-game-name">🐶 Dog Hanger</div>
+              <div class="more-game-desc">Hold on tight & catch flying frisbees over the park pool</div>
+            </div>
+          </a>
+          <a class="more-game-item" href="https://github.com/VaelNTN/cat-climber/releases/latest" target="_blank" rel="noopener noreferrer">
+            <div>
+              <div class="more-game-name">🐈 Cat Climber</div>
+              <div class="more-game-desc">Climb sky-high with glowing fish treats & falling acorns</div>
+            </div>
+          </a>
+          <a class="more-game-item" href="https://github.com/VaelNTN/cat-hanger/releases/latest" target="_blank" rel="noopener noreferrer">
+            <div>
+              <div class="more-game-name">🐱 Cat Hanger</div>
+              <div class="more-game-desc">Brave sunset rooftop wind gusts & rhythmic treat boosts</div>
+            </div>
+          </a>
+        </div>
+        <button id="btn-more-close" class="btn btn-secondary" style="padding:11px;">Close</button>
+      </div>
+    </div>
   `;
 }
 
 function showScreen(name: ScreenName): void {
+  activeScreen = name;
+  closePauseModal(false);
+  document.getElementById('more-games-modal')?.classList.add('hidden');
   document.querySelectorAll('.screen').forEach((el) => el.classList.add('hidden'));
   document.getElementById(`screen-${name}`)?.classList.remove('hidden');
 
   if (name === 'game') {
     startStage();
   } else {
+    flushScoreNow();
     stopStage();
   }
 
@@ -167,6 +285,7 @@ function showScreen(name: ScreenName): void {
 
 function startHomePreview(): void {
   stopHomePreview();
+  syncSoundButtons();
   const canvas = document.getElementById('home-dog-canvas') as HTMLCanvasElement;
   const pill = document.getElementById('home-best-pill')!;
   if (state.bestMeters > 0) {
@@ -225,7 +344,7 @@ function renderOptions(): void {
     renderDogThumb(cvs, b.id, 48);
     const label = document.createElement('span');
     label.style.fontWeight = '700';
-    label.style.fontSize = '0.9rem';
+    label.style.fontSize = '0.88rem';
     label.textContent = b.name;
     btn.appendChild(cvs);
     btn.appendChild(label);
@@ -269,22 +388,13 @@ function renderOptions(): void {
 function updateGameHud(): void {
   document.getElementById('meters-value')!.textContent = `${state.currentMeters.toFixed(1)} m`;
   document.getElementById('meters-best')!.textContent = `Best: ${state.bestMeters.toFixed(1)} m`;
-  document.getElementById('btn-game-sound')!.textContent = state.soundEnabled ? '🔊' : '🔇';
+  syncSoundButtons();
 }
 
 function scheduleSync(): void {
   if (syncTimeout !== null) clearTimeout(syncTimeout);
   syncTimeout = window.setTimeout(() => {
-    if (state.apiBaseUrl) {
-      submitGlobalDogClimberScore(state.apiBaseUrl, {
-        deviceId: state.deviceId,
-        playerName: state.playerName.trim() || 'Player',
-        meters: state.bestMeters,
-        breedId: state.breedId,
-        collarColor: state.collarColor,
-        accessory: state.accessory,
-      });
-    }
+    flushScoreNow();
   }, 1500);
 }
 
@@ -303,9 +413,13 @@ function startStage(): void {
       },
       {
         onClimbStep: (delta, bonusType) => {
+          if (bonusType === 'bonk') {
+            soundFX.playBonk();
+            return;
+          }
           state.currentMeters += delta;
-          if (bonusType === 'hydrant') soundFX.playBoost();
-          else if (bonusType === 'bone') soundFX.playBark();
+          if (bonusType === 'hydrant' || bonusType === 'turbo') soundFX.playBoost();
+          else if (bonusType === 'bone' || bonusType === 'dodge') soundFX.playBark();
           else soundFX.playClimb(state.currentMeters % 12);
           updateDogClimberHighscore(state);
           updateGameHud();
@@ -450,6 +564,7 @@ async function init(): Promise<void> {
   soundFX.enabled = state.soundEnabled;
   buildApp();
   renderOptions();
+  syncSoundButtons();
 
   document.getElementById('btn-home-play')!.onclick = () => showScreen('game');
   document.getElementById('btn-home-options')!.onclick = () => {
@@ -458,6 +573,18 @@ async function init(): Promise<void> {
     showScreen('options');
   };
   document.getElementById('btn-home-highscores')!.onclick = () => showScreen('highscores');
+  document.getElementById('btn-home-sound')!.onclick = toggleSound;
+  document.getElementById('btn-home-more')!.onclick = () => {
+    document.getElementById('more-games-modal')?.classList.remove('hidden');
+  };
+  document.getElementById('btn-more-close')!.onclick = () => {
+    document.getElementById('more-games-modal')?.classList.add('hidden');
+  };
+  document.getElementById('more-games-modal')!.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+      document.getElementById('more-games-modal')?.classList.add('hidden');
+    }
+  });
 
   document.getElementById('btn-options-back')!.onclick = () => showScreen(optionsFromPlay ? 'game' : 'home');
   document.getElementById('btn-options-start')!.onclick = () => showScreen('game');
@@ -466,23 +593,40 @@ async function init(): Promise<void> {
     saveDogClimberState(state);
   });
 
-  document.getElementById('btn-game-menu')!.onclick = () => showScreen('home');
-  document.getElementById('btn-game-options')!.onclick = () => {
+  document.getElementById('btn-game-pause')!.onclick = openPauseModal;
+  document.getElementById('btn-game-sound')!.onclick = toggleSound;
+  document.getElementById('btn-pause-resume')!.onclick = () => closePauseModal(true);
+  document.getElementById('btn-pause-options')!.onclick = () => {
     optionsFromPlay = true;
     renderOptions();
     showScreen('options');
   };
-  document.getElementById('btn-game-new')!.onclick = () => {
+  document.getElementById('btn-pause-new')!.onclick = () => {
+    flushScoreNow();
+    closePauseModal(true);
     startNewDogClimberRun(state);
     stage?.setMeters(0, state.bestMeters);
     updateGameHud();
   };
-  document.getElementById('btn-game-sound')!.onclick = () => {
-    state.soundEnabled = !state.soundEnabled;
-    soundFX.enabled = state.soundEnabled;
-    saveDogClimberState(state);
-    updateGameHud();
+  document.getElementById('btn-pause-quit')!.onclick = () => {
+    const quitBtn = document.getElementById('btn-pause-quit')!;
+    if (!confirmQuitArmed) {
+      confirmQuitArmed = true;
+      quitBtn.textContent = '⚠️ Confirm Quit?';
+      quitBtn.classList.add('armed');
+    } else {
+      flushScoreNow();
+      showScreen('home');
+    }
   };
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && activeScreen === 'game') {
+      const modal = document.getElementById('pause-modal');
+      if (modal && !modal.classList.contains('hidden')) closePauseModal(true);
+      else openPauseModal();
+    }
+  });
 
   document.getElementById('btn-hs-back')!.onclick = () => showScreen('home');
   document.getElementById('btn-hs-refresh')!.onclick = () => refreshHighscoresView();

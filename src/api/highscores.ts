@@ -56,7 +56,7 @@ export async function submitGlobalDogClimberScore(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         deviceId: payload.deviceId,
-        playerName: payload.playerName.trim() || 'Hondenbaas',
+        playerName: payload.playerName.trim() || 'Player',
         meters: payload.meters,
         breedId: payload.breedId,
         collarColor: payload.collarColor,
